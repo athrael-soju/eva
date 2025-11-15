@@ -45,7 +45,7 @@ export default function LoadingAnimation() {
     const areawidth = window.innerWidth;
     const areaheight = window.innerHeight;
 
-    // Make canvas size responsive - use 80% of smaller dimension, max 600px
+    // Make canvas size responsive
     const canvassize = Math.min(Math.min(areawidth, areaheight));
 
     const length = 30;
