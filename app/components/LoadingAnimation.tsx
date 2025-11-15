@@ -33,14 +33,33 @@ class CustomCurve extends THREE.Curve<THREE.Vector3> {
 }
 
 interface LoadingAnimationProps {
-  autoplay?: boolean;
+  onAnimationComplete?: () => void;
+  isAgentConnected?: boolean;
+  shouldReset?: boolean;
 }
 
-export default function LoadingAnimation({ autoplay = false }: LoadingAnimationProps) {
+export default function LoadingAnimation({ onAnimationComplete, isAgentConnected, shouldReset }: LoadingAnimationProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
-  const toendRef = useRef(autoplay);
   const completedRef = useRef(false);
+  const completionCallbackFiredRef = useRef(false);
+  const animationStartedRef = useRef(false);
+  const isAgentConnectedRef = useRef(false);
+  const animateStepRef = useRef(0);
+  const isReversingRef = useRef(false);
+
+  // Update ref when isAgentConnected changes
+  useEffect(() => {
+    isAgentConnectedRef.current = isAgentConnected || false;
+  }, [isAgentConnected]);
+
+  // Handle reset - trigger smooth reverse animation
+  useEffect(() => {
+    if (shouldReset) {
+      isReversingRef.current = true;
+      animationStartedRef.current = false;
+    }
+  }, [shouldReset]);
 
   useEffect(() => {
     // Capture ref value to fix React hooks warning
@@ -58,7 +77,6 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
 
     const rotatevalue = 0.035;
     let acceleration = 0;
-    let animatestep = 0;
 
     const pi2 = Math.PI * 2;
 
@@ -112,10 +130,11 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
     // Renderer setup
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
+      alpha: true, // Enable transparency
     });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(canvassize, canvassize);
-    renderer.setClearColor('#d1684e');
+    renderer.setClearColor(0x000000, 0); // Transparent background
 
     // Style the canvas element
     const canvas = renderer.domElement;
@@ -125,20 +144,73 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
     canvas.style.transform = 'translate(-50%, -50%)';
     canvas.style.width = `${canvassize}px`;
     canvas.style.height = `${canvassize}px`;
+    canvas.style.cursor = 'default';
 
     currentWrap.appendChild(canvas);
 
-    // Event handlers
-    const start = () => {
-      toendRef.current = true;
-    };
+    // Setup raycaster for precise click detection
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
 
-    const back = () => {
-      // Only allow reversing if animation hasn't completed
-      if (!completedRef.current) {
-        toendRef.current = false;
+    // Increase raycaster threshold to detect clicks near the geometry
+    raycaster.params.Line = { threshold: 10 };
+    raycaster.params.Points = { threshold: 10 };
+
+    // Click handler to start animation - clicks within the animation area
+    const handleCanvasClick = (event: MouseEvent) => {
+      if (!animationStartedRef.current) {
+        // Get canvas bounding rectangle
+        const rect = canvas.getBoundingClientRect();
+
+        // Calculate click position relative to canvas center
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        // Calculate distance from center
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(clickX - centerX, 2) + Math.pow(clickY - centerY, 2)
+        );
+
+        // Allow clicks within a reasonable radius around the animation (about 30% of canvas size)
+        const clickableRadius = Math.min(rect.width, rect.height) * 0.3;
+
+        // Only start animation if clicked within the animation area
+        if (distanceFromCenter <= clickableRadius) {
+          animationStartedRef.current = true;
+
+          // Fire the callback when animation starts
+          if (!completionCallbackFiredRef.current && onAnimationComplete) {
+            completionCallbackFiredRef.current = true;
+            onAnimationComplete();
+          }
+        }
       }
     };
+
+    // Update cursor on mouse move to show when hovering over clickable area
+    const handleCanvasMouseMove = (event: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+
+      // Calculate mouse position relative to canvas center
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+
+      // Calculate distance from center
+      const distanceFromCenter = Math.sqrt(
+        Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2)
+      );
+
+      // Show pointer cursor within the clickable radius
+      const clickableRadius = Math.min(rect.width, rect.height) * 0.3;
+      canvas.style.cursor = distanceFromCenter <= clickableRadius ? 'pointer' : 'default';
+    };
+
+    canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('mousemove', handleCanvasMouseMove);
 
     // Easing function
     const easing = (t: number, b: number, c: number, d: number) => {
@@ -150,17 +222,34 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
     const render = () => {
       let progress;
 
-      animatestep = Math.max(
-        0,
-        Math.min(240, toendRef.current ? animatestep + 1 : animatestep - 4)
-      );
+      // Handle reverse animation (smooth reset)
+      if (isReversingRef.current) {
+        // Reverse at 2x speed for quicker reset
+        const reverseSpeed = 2;
+        animateStepRef.current = Math.max(0, animateStepRef.current - reverseSpeed);
+
+        // Once fully reversed, complete the reset
+        if (animateStepRef.current === 0) {
+          isReversingRef.current = false;
+          completedRef.current = false;
+          completionCallbackFiredRef.current = false;
+        }
+      }
+      // Only advance animation if started and not reversing
+      else if (animationStartedRef.current) {
+        // Pause at halfway (120 steps) until agent is connected
+        const maxStep = isAgentConnectedRef.current ? 240 : 120;
+        // Slower speed while waiting for agent, normal speed after connected
+        const speed = isAgentConnectedRef.current ? 1 : 0.25;
+        animateStepRef.current = Math.max(0, Math.min(maxStep, animateStepRef.current + speed));
+      }
 
       // Mark as completed when animation reaches the end
-      if (animatestep >= 240) {
+      if (animateStepRef.current >= 240) {
         completedRef.current = true;
       }
 
-      acceleration = easing(animatestep, 0, 1, 240);
+      acceleration = easing(animateStepRef.current, 0, 1, 240);
 
       if (acceleration > 0.35) {
         progress = (acceleration - 0.35) / 0.65;
@@ -171,6 +260,14 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
         (ringcover.material as THREE.MeshBasicMaterial).opacity = progress;
         (ring.material as THREE.MeshBasicMaterial).opacity = progress;
         ring.scale.x = ring.scale.y = 0.9 + 0.1 * progress;
+      } else {
+        // Reset to initial state when animation is at the beginning
+        group.rotation.y = 0;
+        group.position.z = 0;
+        mesh.material.opacity = 1;
+        (ringcover.material as THREE.MeshBasicMaterial).opacity = 0;
+        (ring.material as THREE.MeshBasicMaterial).opacity = 0;
+        ring.scale.x = ring.scale.y = 0.9;
       }
 
       renderer.render(scene, camera);
@@ -198,10 +295,6 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
     };
 
     // Add event listeners
-    document.body.addEventListener('mousedown', start, false);
-    document.body.addEventListener('touchstart', start, false);
-    document.body.addEventListener('mouseup', back, false);
-    document.body.addEventListener('touchend', back, false);
     window.addEventListener('resize', handleResize, false);
 
     // Cleanup
@@ -209,10 +302,8 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      document.body.removeEventListener('mousedown', start);
-      document.body.removeEventListener('touchstart', start);
-      document.body.removeEventListener('mouseup', back);
-      document.body.removeEventListener('touchend', back);
+      canvas.removeEventListener('click', handleCanvasClick);
+      canvas.removeEventListener('mousemove', handleCanvasMouseMove);
       window.removeEventListener('resize', handleResize);
 
       if (currentWrap && renderer.domElement) {
@@ -221,10 +312,10 @@ export default function LoadingAnimation({ autoplay = false }: LoadingAnimationP
 
       renderer.dispose();
     };
-  }, []);
+  }, [onAnimationComplete]);
 
   return (
-    <div className="fixed inset-0 w-screen h-screen">
+    <div className="fixed inset-0 w-screen h-screen" style={{ backgroundColor: '#d1684e' }}>
       <div
         ref={wrapRef}
         className="absolute left-0 right-0 top-0 bottom-0 overflow-hidden"
