@@ -35,20 +35,32 @@ class CustomCurve extends THREE.Curve<THREE.Vector3> {
 interface LoadingAnimationProps {
   onAnimationComplete?: () => void;
   isAgentConnected?: boolean;
+  shouldReset?: boolean;
 }
 
-export default function LoadingAnimation({ onAnimationComplete, isAgentConnected }: LoadingAnimationProps) {
+export default function LoadingAnimation({ onAnimationComplete, isAgentConnected, shouldReset }: LoadingAnimationProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const completedRef = useRef(false);
   const completionCallbackFiredRef = useRef(false);
   const animationStartedRef = useRef(false);
   const isAgentConnectedRef = useRef(false);
+  const animateStepRef = useRef(0);
 
   // Update ref when isAgentConnected changes
   useEffect(() => {
     isAgentConnectedRef.current = isAgentConnected || false;
   }, [isAgentConnected]);
+
+  // Handle reset
+  useEffect(() => {
+    if (shouldReset) {
+      animationStartedRef.current = false;
+      completedRef.current = false;
+      completionCallbackFiredRef.current = false;
+      animateStepRef.current = 0;
+    }
+  }, [shouldReset]);
 
   useEffect(() => {
     // Capture ref value to fix React hooks warning
@@ -66,7 +78,6 @@ export default function LoadingAnimation({ onAnimationComplete, isAgentConnected
 
     const rotatevalue = 0.035;
     let acceleration = 0;
-    let animatestep = 0;
 
     const pi2 = Math.PI * 2;
 
@@ -169,15 +180,15 @@ export default function LoadingAnimation({ onAnimationComplete, isAgentConnected
         const maxStep = isAgentConnectedRef.current ? 240 : 120;
         // Slower speed while waiting for agent, normal speed after connected
         const speed = isAgentConnectedRef.current ? 1 : 0.25;
-        animatestep = Math.max(0, Math.min(maxStep, animatestep + speed));
+        animateStepRef.current = Math.max(0, Math.min(maxStep, animateStepRef.current + speed));
       }
 
       // Mark as completed when animation reaches the end
-      if (animatestep >= 240) {
+      if (animateStepRef.current >= 240) {
         completedRef.current = true;
       }
 
-      acceleration = easing(animatestep, 0, 1, 240);
+      acceleration = easing(animateStepRef.current, 0, 1, 240);
 
       if (acceleration > 0.35) {
         progress = (acceleration - 0.35) / 0.65;
@@ -188,6 +199,14 @@ export default function LoadingAnimation({ onAnimationComplete, isAgentConnected
         (ringcover.material as THREE.MeshBasicMaterial).opacity = progress;
         (ring.material as THREE.MeshBasicMaterial).opacity = progress;
         ring.scale.x = ring.scale.y = 0.9 + 0.1 * progress;
+      } else {
+        // Reset to initial state when animation is at the beginning
+        group.rotation.y = 0;
+        group.position.z = 0;
+        mesh.material.opacity = 1;
+        (ringcover.material as THREE.MeshBasicMaterial).opacity = 0;
+        (ring.material as THREE.MeshBasicMaterial).opacity = 0;
+        ring.scale.x = ring.scale.y = 0.9;
       }
 
       renderer.render(scene, camera);
