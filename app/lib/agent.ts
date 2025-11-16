@@ -1,17 +1,29 @@
 import { RealtimeAgent } from '@openai/agents/realtime';
 import type { RealtimeSession } from '@openai/agents/realtime';
+import { getRealtimeTools, clearSessionMemory } from './realtime-adapter';
 
 // Function to create the agent with a disconnect callback
 export function createConversationalAgent(
   onDisconnect: () => void,
   getSession: () => RealtimeSession | null
 ) {
+  // Get multi-agent tools
+  const multiAgentTools = getRealtimeTools();
+
   return new RealtimeAgent({
     name: 'assistant',
-    handoffDescription: 'A helpful AI assistant.',
-    instructions:
-      'You are a friendly and helpful AI assistant. Engage in natural conversation with the user. Be concise but warm in your responses. When the user indicates they want to end the conversation or says goodbye, use the end_session tool to properly disconnect.',
+    handoffDescription: 'A helpful AI assistant with memory and knowledge base access.',
+    instructions: `You are a friendly and helpful AI assistant with access to memory and knowledge tools.
+
+Your capabilities:
+- Search past conversations using the search_memory tool when users reference previous discussions
+- Access documentation via search_knowledge_base for technical questions about deployment, APIs, databases, etc.
+- Process complex queries requiring multiple tools with process_complex_query
+
+Be concise but warm in your responses. When you use tools, briefly explain what information you found.
+When the user indicates they want to end the conversation or says goodbye, use the end_session tool to properly disconnect.`,
     tools: [
+      ...multiAgentTools,
       {
         type: 'function',
         name: 'end_session',
@@ -31,6 +43,9 @@ export function createConversationalAgent(
         invoke: async (_context, input: string) => {
           const args = JSON.parse(input);
           console.log('Ending session with farewell:', args.farewell_message);
+
+          // Clear session memory on disconnect
+          clearSessionMemory();
 
           // Wait for the agent to finish speaking before disconnecting
           const session = getSession();
