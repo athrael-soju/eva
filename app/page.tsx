@@ -105,7 +105,7 @@ export default function Home() {
       console.log('Connecting to realtime API...');
       await session.connect({
         apiKey: sessionData.client_secret.value,
-        model: 'gpt-realtime-mini',
+        model: process.env.OPENAI_REALTIME_MODEL,
       });
       console.log('Connected successfully');
 

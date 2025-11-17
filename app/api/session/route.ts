@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server';
 export async function POST() {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
+    const model = process.env.OPENAI_REALTIME_MODEL;
+    if (!apiKey || !model) {
       return NextResponse.json(
-        { error: 'OPENAI_API_KEY not configured' },
+        { error: 'OPENAI_API_KEY or OPENAI_REALTIME_MODEL not configured' },
         { status: 500 }
       );
     }
@@ -21,7 +21,7 @@ export async function POST() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-realtime-mini',
+          model: model,
         }),
       }
     );
