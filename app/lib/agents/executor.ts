@@ -1,122 +1,17 @@
-import {
-    StorageRequest,
-    StorageResponseSchema,
-    StorageErrorResponseSchema,
-    MCPToolResponse,
-    QueryMemoryResponse
-} from '../schemas/memory';
+import { memoryClient } from '../services/memoryClient';
 
 export class ExecutorHelper {
-    private static async callStorageAPI(action: StorageRequest['action'], payload: string): Promise<any> {
-        const requestBody: StorageRequest = { action, payload };
-
-        const response = await fetch('/api/storage', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            // Validate error response
-            const errorResponse = StorageErrorResponseSchema.safeParse(data);
-            if (errorResponse.success) {
-                throw new Error(`Storage API error: ${errorResponse.data.error}. ${errorResponse.data.details || ''}`);
-            }
-            throw new Error(`Storage API error: ${response.statusText}`);
-        }
-
-        // Validate success response
-        const validatedResponse = StorageResponseSchema.safeParse(data);
-        if (validatedResponse.success) {
-            return validatedResponse.data.result;
-        }
-
-        // If validation fails, return raw data but log warning
-        console.warn('Storage API response does not match expected schema:', data);
-        return data.result;
-    }
-
-    static async queryMemory(query: string): Promise<string> {
+    static async queryMemory(query: string) {
         console.log('ExecutorHelper: Querying memory for:', query);
-        try {
-            const result = await this.callStorageAPI('query_memory', query);
-            console.log('ExecutorHelper: Query result:', JSON.stringify(result, null, 2));
-
-            // Check if we have structured content with nodes
-            if (result?.structuredContent?.result) {
-                const structuredResult = result.structuredContent.result;
-
-                // Check if no nodes were found
-                if (structuredResult.nodes && Array.isArray(structuredResult.nodes)) {
-                    if (structuredResult.nodes.length === 0) {
-                        return "No previous information found. This appears to be your first meeting.";
-                    }
-
-                    // Format nodes in a natural, narrative way
-                    const nodeDescriptions = structuredResult.nodes.map((node: any) => {
-                        const parts = [];
-                        if (node.name) parts.push(`Name: ${node.name}`);
-                        if (node.summary) parts.push(`Details: ${node.summary}`);
-                        return parts.join('. ');
-                    }).filter((desc: string) => desc.length > 0);
-
-                    return nodeDescriptions.join('\n');
-                }
-            }
-
-            // Fallback to checking content array
-            if (result && result.content) {
-                const content = result.content;
-                if (Array.isArray(content) && content.length > 0) {
-                    // Try to parse text content
-                    const textContent = content.find((item: any) => item.type === 'text');
-                    if (textContent && textContent.text) {
-                        try {
-                            const parsed = JSON.parse(textContent.text);
-                            if (parsed.nodes && Array.isArray(parsed.nodes)) {
-                                if (parsed.nodes.length === 0) {
-                                    return "No previous information found. This appears to be your first meeting.";
-                                }
-                                // Format parsed nodes naturally
-                                const nodeDescriptions = parsed.nodes.map((node: any) => {
-                                    const parts = [];
-                                    if (node.name) parts.push(`Name: ${node.name}`);
-                                    if (node.summary) parts.push(`Details: ${node.summary}`);
-                                    return parts.join('. ');
-                                }).filter((desc: string) => desc.length > 0);
-                                return nodeDescriptions.join('\n');
-                            }
-                        } catch (e) {
-                            // If parsing fails, return the text content as is
-                            return textContent.text;
-                        }
-                    }
-                    return content.map((item: any) => item.text || '').filter((t: string) => t).join('\n');
-                } else if (Array.isArray(content)) {
-                    return "No previous information found. This appears to be your first meeting.";
-                }
-            }
-
-            return JSON.stringify(result, null, 2);
-        } catch (error) {
-            console.error('Failed to query memory:', error);
-            return "Error querying memory.";
-        }
+        const result = await memoryClient.queryMemory(query);
+        console.log('ExecutorHelper: Query result:', JSON.stringify(result, null, 2));
+        return result;
     }
 
     static async saveMemory(content: string): Promise<string> {
         console.log('ExecutorHelper: Saving to memory:', content);
-        try {
-            await this.callStorageAPI('save_memory', content);
-            return 'Memory saved successfully';
-        } catch (error) {
-            console.error('Failed to save memory:', error);
-            return 'Error saving memory.';
-        }
+        await memoryClient.saveMemory(content);
+        return 'Memory saved successfully';
     }
 
     /**
@@ -127,53 +22,21 @@ export class ExecutorHelper {
         try {
             const conversationContent = `User: ${userMessage}\nEva: ${agentResponse}`;
             console.log('ExecutorHelper: Auto-saving conversation turn');
-            await this.callStorageAPI('save_memory', conversationContent);
+            await memoryClient.saveMemory(conversationContent);
         } catch (error) {
             console.error('Failed to auto-save conversation turn:', error);
             // Don't throw - we don't want to interrupt the conversation if auto-save fails
         }
     }
 
-    static async searchFacts(query: string, centerNodeUuid?: string): Promise<string> {
+    static async searchFacts(query: string, centerNodeUuid?: string) {
         console.log('ExecutorHelper: Searching facts for:', query, centerNodeUuid ? `(centered on ${centerNodeUuid})` : '');
-        try {
-            const requestBody = {
-                action: 'search_facts' as const,
-                payload: query,
-                options: centerNodeUuid ? { centerNodeUuid } : undefined,
-            };
-
-            const response = await fetch('/api/storage', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const errorResponse = StorageErrorResponseSchema.safeParse(data);
-                if (errorResponse.success) {
-                    throw new Error(`Storage API error: ${errorResponse.data.error}. ${errorResponse.data.details || ''}`);
-                }
-                throw new Error(`Storage API error: ${response.statusText}`);
-            }
-
-            const validatedResponse = StorageResponseSchema.safeParse(data);
-            if (validatedResponse.success) {
-                const result = validatedResponse.data.result;
-                console.log('ExecutorHelper: Facts result:', JSON.stringify(result, null, 2));
-                return JSON.stringify(result, null, 2);
-            }
-
-            console.warn('Storage API response does not match expected schema:', data);
-            return JSON.stringify(data.result, null, 2);
-        } catch (error) {
-            console.error('Failed to search facts:', error);
-            return "Error searching facts.";
-        }
+        const result = await memoryClient.searchFacts(
+            query,
+            centerNodeUuid ? { centerNodeUuid } : undefined
+        );
+        console.log('ExecutorHelper: Facts result:', JSON.stringify(result, null, 2));
+        return result;
     }
 
 }

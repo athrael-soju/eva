@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
+import { config } from '../../lib/config';
 
 export async function POST() {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    const model = process.env.OPENAI_REALTIME_MODEL;
+    const apiKey = config.openaiApiKey;
+    const model = config.openaiRealtimeModel;
     if (!apiKey || !model) {
       return NextResponse.json(
         { error: 'OPENAI_API_KEY or OPENAI_REALTIME_MODEL not configured' },

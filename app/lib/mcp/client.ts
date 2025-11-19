@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
+import { config } from "../config";
 
 // Schema for MCP tool call arguments
 const AddMemoryArgsSchema = z.object({
@@ -37,9 +38,8 @@ export class MCPClient {
     private isConnected: boolean = false;
 
     constructor() {
-        // Use environment variable or default to localhost (no trailing slash)
-        const mcpUrl = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "http://localhost:8000/mcp";
-        this.transport = new StreamableHTTPClientTransport(new URL(mcpUrl));
+        // Use centralized config (no trailing slash)
+        this.transport = new StreamableHTTPClientTransport(new URL(config.mcpServerUrl));
         this.client = new Client({
             name: "Eva",
             version: "1.0.0",
