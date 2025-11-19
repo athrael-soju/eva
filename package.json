@@ -16,6 +16,10 @@
     "virtual-assistant",
     "knowledge-graph",
     "memory-system",
+    "graphiti",
+    "falkordb",
+    "graph-database",
+    "temporal-knowledge-graph",
     "nextjs",
     "react",
     "typescript",
@@ -27,7 +31,8 @@
     "three-js",
     "3d-animation",
     "emotional-ai",
-    "personalized-ai"
+    "personalized-ai",
+    "episodic-memory"
   ],
   "repository": {
     "type": "git",
