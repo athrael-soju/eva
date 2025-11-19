@@ -78,6 +78,92 @@ export default function Home() {
       audioElement.autoplay = true;
       audioElementRef.current = audioElement;
 
+      // Function to wait for audio playback to finish using silence detection
+      const waitForAudioPlayback = async () => {
+        if (!audioElementRef.current) return;
+
+        const audio = audioElementRef.current;
+
+        return new Promise<void>((resolve) => {
+          // 1. If audio is already paused or ended
+          if (audio.paused || audio.ended) {
+            resolve();
+            return;
+          }
+
+          // 2. Setup Web Audio API for silence detection
+          try {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const audioContext = new AudioContextClass();
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            // Get stream from audio element
+            const stream = audio.srcObject as MediaStream;
+            if (!stream) {
+              resolve(); // No stream means no audio
+              return;
+            }
+
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            let silenceStart = Date.now();
+            const SILENCE_THRESHOLD = 10; // Low threshold for silence (0-255)
+            const SILENCE_DURATION = 1000; // 1 second of silence to confirm end
+
+            const checkSilence = () => {
+              analyser.getByteFrequencyData(dataArray);
+
+              // Calculate average volume
+              let sum = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+              }
+              const average = sum / bufferLength;
+
+              if (average < SILENCE_THRESHOLD) {
+                // It's silent
+                if (Date.now() - silenceStart > SILENCE_DURATION) {
+                  // Silence has lasted long enough
+                  cleanup();
+                  resolve();
+                } else {
+                  // Continue checking
+                  requestAnimationFrame(checkSilence);
+                }
+              } else {
+                // Not silent, reset timer
+                silenceStart = Date.now();
+                requestAnimationFrame(checkSilence);
+              }
+            };
+
+            const cleanup = () => {
+              source.disconnect();
+              analyser.disconnect();
+              audioContext.close();
+            };
+
+            // Start checking
+            checkSilence();
+
+            // Safety timeout (max 10 seconds)
+            setTimeout(() => {
+              cleanup();
+              resolve();
+            }, 10000);
+
+          } catch (e) {
+            console.error('Error setting up silence detection:', e);
+            resolve(); // Fallback to immediate resolve on error
+          }
+        });
+      };
+
       // Create WebRTC transport with audio element
       const transport = new OpenAIRealtimeWebRTC({
         audioElement: audioElement,
@@ -86,7 +172,8 @@ export default function Home() {
       // Create the agent with disconnect callback and session getter
       const agent = createConversationalAgent(
         handleDisconnect,
-        () => sessionRef.current
+        () => sessionRef.current,
+        waitForAudioPlayback
       );
 
       // Create RealtimeSession with the agent and transport

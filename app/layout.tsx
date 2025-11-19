@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: "Eva - Your AI Companion",
   description: "A warm, thoughtful AI companion with memory. Eva remembers your conversations and forms meaningful connections.",
   icons: {
-    icon: '/eva-icon.ico',
-    apple: '/eva-icon.ico',
+    icon: '/eva-icon-nobg.png',
+    apple: '/eva-icon-nobg.png',
   },
 };
 

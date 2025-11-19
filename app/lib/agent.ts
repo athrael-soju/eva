@@ -5,10 +5,11 @@ import { createChatAgent } from './agents/chat';
 // Function to create the agent with a disconnect callback
 export function createConversationalAgent(
   onDisconnect: () => void,
-  getSession: () => RealtimeSession | null
+  getSession: () => RealtimeSession | null,
+  waitForAudioPlayback: () => Promise<void>
 ) {
   // Create core agents
-  const chatAgent = createChatAgent(onDisconnect, getSession);
+  const chatAgent = createChatAgent(onDisconnect, getSession, waitForAudioPlayback);
 
   // Return the entry point agent
   return chatAgent;

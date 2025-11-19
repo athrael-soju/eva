@@ -4,7 +4,8 @@ import { queryMemoryTool, saveMemoryTool, searchFactsTool } from './executor';
 
 export const createChatAgent = (
     onDisconnect: () => void,
-    getSession: () => RealtimeSession | null
+    getSession: () => RealtimeSession | null,
+    waitForAudioPlayback: () => Promise<void>
 ) => {
     return new RealtimeAgent({
         name: 'Eva',
@@ -103,45 +104,26 @@ export const createChatAgent = (
 
                     const session = getSession();
                     if (session) {
-                        let agentDone = false;
-                        let audioDone = false;
-                        let disconnected = false;
+                        // Wait for the agent to finish its turn (generation)
+                        const onAgentEnd = async () => {
+                            console.log('Agent response completed, waiting for audio playback...');
+                            session.off('agent_end', onAgentEnd);
 
-                        const checkAndDisconnect = () => {
-                            if ((agentDone && audioDone) && !disconnected) {
-                                disconnected = true;
-                                setTimeout(() => {
-                                    session.off('agent_end', onAgentEnd);
-                                    session.off('audio_stopped', onAudioStopped);
-                                    onDisconnect();
-                                }, 1000);
-                            }
-                        };
+                            // Now wait for the actual audio to finish playing in the browser
+                            await waitForAudioPlayback();
 
-                        const onAgentEnd = () => {
-                            console.log('Agent response completed');
-                            agentDone = true;
-                            checkAndDisconnect();
-                        };
-
-                        const onAudioStopped = () => {
-                            console.log('Audio playback stopped');
-                            audioDone = true;
-                            checkAndDisconnect();
+                            console.log('Audio playback finished, disconnecting...');
+                            onDisconnect();
                         };
 
                         session.on('agent_end', onAgentEnd);
-                        session.on('audio_stopped', onAudioStopped);
 
+                        // Fallback timeout in case agent_end never fires or something gets stuck
                         setTimeout(() => {
-                            if (!disconnected) {
-                                console.log('Disconnect timeout reached, forcing disconnect');
-                                session.off('agent_end', onAgentEnd);
-                                session.off('audio_stopped', onAudioStopped);
-                                disconnected = true;
-                                onDisconnect();
-                            }
-                        }, 10000);
+                            console.log('Disconnect timeout reached, forcing disconnect');
+                            session.off('agent_end', onAgentEnd);
+                            onDisconnect();
+                        }, 15000);
                     } else {
                         setTimeout(() => {
                             onDisconnect();
