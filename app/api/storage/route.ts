@@ -1,33 +1,49 @@
 import { NextResponse } from 'next/server';
-import { StorageHelper } from '@/app/lib/storage';
+import { MCPClient } from '../../lib/mcp/client';
+import { StorageRequestSchema, StorageErrorResponse } from '../../lib/schemas/memory';
+import { ZodError } from 'zod';
+
+const mcpClient = new MCPClient();
+const GROUP_ID = process.env.MCP_GROUP_ID || 'dot-conversations';
 
 export async function POST(request: Request) {
     try {
-        const { action, payload } = await request.json();
+        // Parse and validate request body
+        const body = await request.json();
+        const validatedRequest = StorageRequestSchema.parse(body);
+
+        console.log(`API/Storage: Received action ${validatedRequest.action} with payload:`, validatedRequest.payload);
 
         let result;
-        switch (action) {
-            case 'query_memory':
-                result = await StorageHelper.searchMemory(payload);
-                break;
-            case 'save_memory':
-                result = await StorageHelper.saveMemory(payload);
-                break;
-            case 'search_knowledge':
-                result = await StorageHelper.searchKnowledge(payload);
-                break;
-            default:
-                return NextResponse.json(
-                    { error: 'Invalid action' },
-                    { status: 400 }
-                );
+        if (validatedRequest.action === 'query_memory') {
+            // Search for user information (entities like name, preferences, etc.)
+            result = await mcpClient.searchNodes(validatedRequest.payload, GROUP_ID);
+        } else if (validatedRequest.action === 'save_memory') {
+            // Save user information to memory (creates episode with entities/relationships)
+            result = await mcpClient.addMemory(validatedRequest.payload, GROUP_ID);
         }
 
-        return NextResponse.json({ success: true, result });
-    } catch (error) {
-        console.error('Storage API error:', error);
+        return NextResponse.json({ result });
+    } catch (error: any) {
+        // Handle Zod validation errors
+        if (error instanceof ZodError) {
+            console.error('API/Storage: Validation error:', error.errors);
+            return NextResponse.json(
+                {
+                    error: 'Invalid request format',
+                    details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+                } satisfies StorageErrorResponse,
+                { status: 400 }
+            );
+        }
+
+        // Handle other errors
+        console.error('API/Storage: Error processing request:', error);
         return NextResponse.json(
-            { error: 'Internal server error' },
+            {
+                error: error.message || 'Internal Server Error',
+                details: error.toString()
+            } satisfies StorageErrorResponse,
             { status: 500 }
         );
     }

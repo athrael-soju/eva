@@ -1,0 +1,11 @@
+services:
+  graphiti:
+    image: zepai/knowledge-graph-mcp:latest
+    ports:
+      - "8000:8000" # MCP Server
+      - "6379:6379" # FalkorDB
+      - "3003:3000" # FalkorDB UI
+    env_file:
+      - .env.local
+    volumes:
+      - ./data:/data

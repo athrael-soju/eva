@@ -11,6 +11,5 @@ export function createConversationalAgent(
   const chatAgent = createChatAgent(onDisconnect, getSession);
 
   // Return the entry point agent
-  console.log('Chat Agent Tools:', JSON.stringify(chatAgent.tools, null, 2));
   return chatAgent;
 }

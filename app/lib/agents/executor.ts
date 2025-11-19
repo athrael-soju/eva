@@ -1,29 +1,89 @@
+import {
+    StorageRequest,
+    StorageResponseSchema,
+    StorageErrorResponseSchema,
+    MCPToolResponse,
+    QueryMemoryResponse
+} from '../schemas/memory';
+
 export class ExecutorHelper {
-    private static async callStorageAPI(action: string, payload: string): Promise<any> {
+    private static async callStorageAPI(action: StorageRequest['action'], payload: string): Promise<any> {
+        const requestBody: StorageRequest = { action, payload };
+
         const response = await fetch('/api/storage', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ action, payload }),
+            body: JSON.stringify(requestBody),
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
+            // Validate error response
+            const errorResponse = StorageErrorResponseSchema.safeParse(data);
+            if (errorResponse.success) {
+                throw new Error(`Storage API error: ${errorResponse.data.error}. ${errorResponse.data.details || ''}`);
+            }
             throw new Error(`Storage API error: ${response.statusText}`);
         }
 
-        const data = await response.json();
+        // Validate success response
+        const validatedResponse = StorageResponseSchema.safeParse(data);
+        if (validatedResponse.success) {
+            return validatedResponse.data.result;
+        }
+
+        // If validation fails, return raw data but log warning
+        console.warn('Storage API response does not match expected schema:', data);
         return data.result;
     }
 
     static async queryMemory(query: string): Promise<string> {
         console.log('ExecutorHelper: Querying memory for:', query);
         try {
-            const memories = await this.callStorageAPI('query_memory', query);
-            if (!memories || memories.length === 0) {
-                return "No relevant memories found.";
+            const result = await this.callStorageAPI('query_memory', query);
+            console.log('ExecutorHelper: Query result:', JSON.stringify(result, null, 2));
+
+            // Check if we have structured content with nodes
+            if (result?.structuredContent?.result) {
+                const structuredResult = result.structuredContent.result;
+
+                // Check if no nodes were found
+                if (structuredResult.nodes && Array.isArray(structuredResult.nodes)) {
+                    if (structuredResult.nodes.length === 0) {
+                        return "No previous information found about the user. This appears to be a first meeting.";
+                    }
+
+                    // Format nodes nicely
+                    return `Found ${structuredResult.nodes.length} memory item(s):\n${JSON.stringify(structuredResult.nodes, null, 2)}`;
+                }
             }
-            return JSON.stringify(memories.map((m: any) => ({ content: m.content, timestamp: m.timestamp })), null, 2);
+
+            // Fallback to checking content array
+            if (result && result.content) {
+                const content = result.content;
+                if (Array.isArray(content) && content.length > 0) {
+                    // Try to parse text content
+                    const textContent = content.find((item: any) => item.type === 'text');
+                    if (textContent && textContent.text) {
+                        try {
+                            const parsed = JSON.parse(textContent.text);
+                            if (parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.length === 0) {
+                                return "No previous information found about the user. This appears to be a first meeting.";
+                            }
+                        } catch (e) {
+                            // If parsing fails, return as is
+                        }
+                    }
+                    return `Found information:\n${JSON.stringify(content, null, 2)}`;
+                } else if (Array.isArray(content)) {
+                    return "No previous information found about the user. This appears to be a first meeting.";
+                }
+            }
+
+            return JSON.stringify(result, null, 2);
         } catch (error) {
             console.error('Failed to query memory:', error);
             return "Error querying memory.";
@@ -41,53 +101,53 @@ export class ExecutorHelper {
         }
     }
 
-    static async searchKnowledge(query: string): Promise<string> {
-        console.log('ExecutorHelper: Searching knowledge base for:', query);
-        try {
-            const knowledge = await this.callStorageAPI('search_knowledge', query);
-            if (!knowledge || knowledge.length === 0) {
-                return "No relevant knowledge found.";
-            }
-            return JSON.stringify(knowledge, null, 2);
-        } catch (error) {
-            console.error('Failed to search knowledge:', error);
-            return "Error searching knowledge.";
-        }
-    }
 }
 
-export const executeTaskTool = {
+export const queryMemoryTool = {
     type: 'function' as const,
-    name: 'execute_task',
-    description: 'Execute a task (memory/knowledge) using the Executor logic.',
+    name: 'query_memory',
+    description: 'Search for information about the USER to personalize the conversation. Use this to find the user\'s name, preferences, interests, past conversations, or any personal facts they\'ve shared. This is ONLY for user personalization, not for general knowledge or factual information.',
     parameters: {
         type: 'object' as const,
         properties: {
-            action: {
+            query: {
                 type: 'string',
-                enum: ['query_memory', 'save_memory', 'search_knowledge'],
-                description: 'The action to perform.',
-            },
-            payload: {
-                type: 'string',
-                description: 'The query or content for the action.',
+                description: 'The query to search for in memory.',
             },
         },
-        required: ['action', 'payload'],
+        required: ['query'],
         additionalProperties: false,
     },
     strict: true,
     invoke: async (context: any, input: string) => {
         const args = JSON.parse(input);
-        let result = '';
-        if (args.action === 'query_memory') {
-            result = await ExecutorHelper.queryMemory(args.payload);
-        } else if (args.action === 'save_memory') {
-            result = await ExecutorHelper.saveMemory(args.payload);
-        } else if (args.action === 'search_knowledge') {
-            result = await ExecutorHelper.searchKnowledge(args.payload);
-        }
+        const result = await ExecutorHelper.queryMemory(args.query);
         return { success: true, result: result };
     },
     needsApproval: async () => false,
 };
+
+export const saveMemoryTool = {
+    type: 'function' as const,
+    name: 'save_memory',
+    description: 'Save information about the USER to long-term memory for future personalization. Use this whenever the user shares personal information like their name, preferences, interests, hobbies, goals, or any facts about themselves or their life. This is ONLY for user information, not for general facts or knowledge.',
+    parameters: {
+        type: 'object' as const,
+        properties: {
+            content: {
+                type: 'string',
+                description: 'The content to save to memory.',
+            },
+        },
+        required: ['content'],
+        additionalProperties: false,
+    },
+    strict: true,
+    invoke: async (context: any, input: string) => {
+        const args = JSON.parse(input);
+        const result = await ExecutorHelper.saveMemory(args.content);
+        return { success: true, result: result };
+    },
+    needsApproval: async () => false,
+};
+
