@@ -9,3 +9,10 @@ services:
       - .env.local
     volumes:
       - ./data:/data
+    networks:
+      - eva-network
+
+networks:
+  eva-network:
+    name: eva-network
+    driver: bridge
