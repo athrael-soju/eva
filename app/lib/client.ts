@@ -1,4 +1,28 @@
+/**
+ * MCP Client - Server-Side Only
+ *
+ * IMPORTANT: This module is designed to run ONLY on the server-side (Node.js).
+ * It should NEVER be imported or used in client-side/browser code.
+ *
+ * All client-side memory operations should go through the API routes:
+ * - /api/memory/add-episode
+ * - /api/memory/search-nodes
+ * - /api/memory/search-facts
+ * - /api/memory/get-episodes
+ * - /api/memory/delete-episode
+ * - /api/memory/delete-entity-edge
+ * - /api/memory/forget
+ */
+
 import { v4 as uuidv4 } from 'uuid';
+
+// Enforce server-side only execution
+if (typeof window !== 'undefined') {
+  throw new Error(
+    'MCPClient can only be used server-side. ' +
+    'Client-side code should call the /api/memory/* endpoints instead.'
+  );
+}
 
 interface JSONRPCRequest {
   jsonrpc: '2.0';
@@ -57,14 +81,9 @@ export class MCPClient {
   private sessionId: string | null = null;
   private isConnected: boolean = false;
 
-  constructor(baseUrl: string = process.env.NEXT_PUBLIC_MCP_SERVER_URL || 'http://localhost:8000/mcp') {
-    // Use Next.js proxy for local connections to avoid CORS
-    if (typeof window !== 'undefined') {
-      const isLocal = baseUrl.includes('localhost:8000') || baseUrl.includes('127.0.0.1:8000');
-      this.baseUrl = isLocal ? '/mcp' : baseUrl;
-    } else {
-      this.baseUrl = baseUrl;
-    }
+  constructor(baseUrl: string = process.env.MCP_SERVER_URL || 'http://localhost:8000/mcp') {
+    // Server-side only - connect directly to MCP server
+    this.baseUrl = baseUrl;
   }
 
   /**
@@ -102,7 +121,10 @@ export class MCPClient {
   }
 
   async connect(): Promise<void> {
-    if (this.isConnected) return;
+    if (this.isConnected) {
+      console.log('MCP client already connected, reusing existing session');
+      return;
+    }
 
     console.log(`Initializing MCP connection to ${this.baseUrl}`);
 
@@ -224,4 +246,20 @@ export class MCPClient {
   }
 }
 
-export const mcpClient = new MCPClient(process.env.NEXT_PUBLIC_MCP_SERVER_URL || 'http://localhost:8000/mcp');
+// Server-side singleton instance
+// This single instance will be reused across all API route calls,
+// maintaining one persistent MCP session
+
+// Use global to persist across Next.js hot reloads in development
+const globalForMCP = globalThis as unknown as {
+  mcpClient: MCPClient | undefined;
+};
+
+export const mcpClient =
+  globalForMCP.mcpClient ??
+  new MCPClient(process.env.MCP_SERVER_URL || 'http://localhost:8000/mcp');
+
+// Store in global to prevent recreation on hot reload
+if (typeof window === 'undefined') {
+  globalForMCP.mcpClient = mcpClient;
+}

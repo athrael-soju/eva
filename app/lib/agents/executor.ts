@@ -1,4 +1,3 @@
-import { mcpClient } from '../client';
 import { EntityTypes } from '../memory';
 
 export const createAddEpisodeTool = (sessionId: string) => ({
@@ -8,26 +7,26 @@ export const createAddEpisodeTool = (sessionId: string) => ({
     parameters: {
         type: 'object' as const,
         properties: {
-            name: { 
-                type: 'string', 
-                description: 'A short title for the memory/episode' 
+            name: {
+                type: 'string',
+                description: 'A short title for the memory/episode'
             },
-            description: { 
-                type: 'string', 
-                description: 'A summary of the conversation or fact to store. This is the main content of the memory.' 
+            description: {
+                type: 'string',
+                description: 'A summary of the conversation or fact to store. This is the main content of the memory.'
             },
-            source: { 
-                type: 'string', 
-                enum: ['message', 'json', 'text'], 
-                description: 'The source type. Use "message" for conversation interactions.' 
+            source: {
+                type: 'string',
+                enum: ['message', 'json', 'text'],
+                description: 'The source type. Use "message" for conversation interactions.'
             },
-            source_description: { 
-                type: 'string', 
-                description: 'Context about where this information came from (e.g., "User chat")' 
+            source_description: {
+                type: 'string',
+                description: 'Context about where this information came from (e.g., "User chat")'
             },
-            group_id: { 
-                type: 'string', 
-                description: 'The user ID or group ID to namespace the data. Use "user_default" if not sure.' 
+            group_id: {
+                type: 'string',
+                description: 'The user ID or group ID to namespace the data. Use "user_default" if not sure.'
             }
         },
         required: ['name', 'description', 'source', 'group_id'],
@@ -36,23 +35,28 @@ export const createAddEpisodeTool = (sessionId: string) => ({
     invoke: async (_context: any, input: string) => {
         try {
             const args = JSON.parse(input);
-            
             console.log('Executing add_episode:', args);
-            
-            // Append session context to ensure linkage to the Session Event
-            const contextSuffix = `\n\n[Context: This interaction occurred during the session event '${sessionId}']`;
-            const enhancedDescription = args.description + contextSuffix;
 
-            // Map to MCP expected parameters (add_memory)
-            const mcpArgs = {
-                name: args.name,
-                episode_body: enhancedDescription,
-                source: args.source,
-                source_description: args.source_description,
-                group_id: args.group_id
-            };
-            
-            const result = await mcpClient.callTool('add_memory', mcpArgs);
+            // Call server-side API route
+            const response = await fetch('/api/memory/add-episode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: args.name,
+                    description: args.description,
+                    source: args.source,
+                    source_description: args.source_description,
+                    group_id: args.group_id,
+                    session_id: sessionId
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to add episode');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in add_episode tool:', error);
@@ -92,15 +96,24 @@ export const searchNodesTool = {
         try {
             const args = JSON.parse(input);
             console.log('Executing search_nodes:', args);
-            
-            // Map to MCP expected parameters
-            const mcpArgs = {
-                query: args.query,
-                group_ids: args.group_id ? [args.group_id] : undefined,
-                entity_types: args.entity_types
-            };
-            
-            const result = await mcpClient.callTool('search_nodes', mcpArgs);
+
+            // Call server-side API route
+            const response = await fetch('/api/memory/search-nodes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: args.query,
+                    group_id: args.group_id,
+                    entity_types: args.entity_types
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to search nodes');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in search_nodes tool:', error);
@@ -134,14 +147,23 @@ export const searchFactsTool = {
         try {
             const args = JSON.parse(input);
             console.log('Executing search_facts:', args);
-            
-            // Map to MCP expected parameters (search_memory_facts)
-            const mcpArgs = {
-                query: args.query,
-                group_ids: args.group_id ? [args.group_id] : undefined
-            };
-            
-            const result = await mcpClient.callTool('search_memory_facts', mcpArgs);
+
+            // Call server-side API route
+            const response = await fetch('/api/memory/search-facts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: args.query,
+                    group_id: args.group_id
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to search facts');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in search_facts tool:', error);
@@ -171,7 +193,20 @@ export const deleteEpisodeTool = {
         try {
             const args = JSON.parse(input);
             console.log('Executing delete_episode:', args);
-            const result = await mcpClient.callTool('delete_episode', args);
+
+            // Call server-side API route
+            const response = await fetch('/api/memory/delete-episode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uuid: args.uuid })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to delete episode');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in delete_episode tool:', error);
@@ -201,7 +236,20 @@ export const deleteEntityEdgeTool = {
         try {
             const args = JSON.parse(input);
             console.log('Executing delete_entity_edge:', args);
-            const result = await mcpClient.callTool('delete_entity_edge', args);
+
+            // Call server-side API route
+            const response = await fetch('/api/memory/delete-entity-edge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uuid: args.uuid })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to delete entity edge');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in delete_entity_edge tool:', error);
@@ -243,16 +291,28 @@ export const forgetAllTool = {
                 });
             }
 
-            const result = await mcpClient.callTool('clear_graph', {
-                group_id: args.group_id
-            });
+            // Directly delete the entire graph for this group using FalkorDB
+            // This is much more efficient than deleting episodes one by one
+            try {
+                const response = await fetch('/api/memory/forget', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: args.group_id })
+                });
 
-            console.log('Successfully cleared graph for group:', args.group_id);
-            return JSON.stringify({
-                success: true,
-                message: 'All memories have been cleared.',
-                result
-            });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    console.error('Error deleting graph:', result.error);
+                    throw new Error(result.error || 'Failed to delete memories');
+                }
+
+                console.log('Successfully deleted entire graph for group:', args.group_id);
+                return JSON.stringify(result);
+            } catch (deleteError: any) {
+                console.error('Error during graph deletion:', deleteError);
+                throw new Error(`Failed to clear memories: ${deleteError.message}`);
+            }
         } catch (error: any) {
             console.error('Error in forget_all tool:', error);
             return JSON.stringify({ error: error.message });
@@ -286,13 +346,23 @@ export const getEpisodesTool = {
         try {
             const args = JSON.parse(input);
             console.log('Executing get_episodes:', args);
-            
-            const mcpArgs = {
-                group_ids: args.group_id ? [args.group_id] : undefined,
-                max_episodes: args.max_episodes
-            };
-            
-            const result = await mcpClient.callTool('get_episodes', mcpArgs);
+
+            // Call server-side API route
+            const response = await fetch('/api/memory/get-episodes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    group_id: args.group_id,
+                    max_episodes: args.max_episodes
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to get episodes');
+            }
+
             return JSON.stringify(result);
         } catch (error: any) {
             console.error('Error in get_episodes tool:', error);
