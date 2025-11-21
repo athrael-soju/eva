@@ -212,6 +212,56 @@ export const deleteEntityEdgeTool = {
     needsApproval: async () => false,
 };
 
+export const forgetAllTool = {
+    type: 'function' as const,
+    name: 'forget_all',
+    description: 'Clear all memories from the knowledge graph. CRITICAL: This is IRREVERSIBLE and will delete ALL episodes, entities, and facts. Only use when the user explicitly requests to forget everything. You MUST ask the user to confirm they are certain before calling this tool.',
+    parameters: {
+        type: 'object' as const,
+        properties: {
+            group_id: {
+                type: 'string',
+                description: 'The user ID or group ID to clear memories for. Use "user_default" for the current user.'
+            },
+            confirmed: {
+                type: 'boolean',
+                description: 'Must be true. Only set to true after the user has explicitly confirmed they want to delete all memories.'
+            }
+        },
+        required: ['group_id', 'confirmed'],
+        additionalProperties: false
+    },
+    invoke: async (_context: any, input: string) => {
+        console.log('Tool invoked: forget_all with input:', input);
+        try {
+            const args = JSON.parse(input);
+            console.log('Executing forget_all:', args);
+
+            if (!args.confirmed) {
+                return JSON.stringify({
+                    error: 'User confirmation required. Ask the user if they are certain before proceeding.'
+                });
+            }
+
+            const result = await mcpClient.callTool('clear_graph', {
+                group_id: args.group_id
+            });
+
+            console.log('Successfully cleared graph for group:', args.group_id);
+            return JSON.stringify({
+                success: true,
+                message: 'All memories have been cleared.',
+                result
+            });
+        } catch (error: any) {
+            console.error('Error in forget_all tool:', error);
+            return JSON.stringify({ error: error.message });
+        }
+    },
+    strict: false,
+    needsApproval: async () => false,
+};
+
 export const getEpisodesTool = {
     type: 'function' as const,
     name: 'get_episodes',

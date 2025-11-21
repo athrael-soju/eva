@@ -4,13 +4,14 @@ import type { RealtimeSession } from '@openai/agents/realtime';
 
 import { personaInstructions } from './persona';
 import { createEndSessionTool } from './tools/endSession';
-import { 
-    createAddEpisodeTool, 
-    searchNodesTool, 
+import {
+    createAddEpisodeTool,
+    searchNodesTool,
     searchFactsTool,
     deleteEpisodeTool,
     deleteEntityEdgeTool,
-    getEpisodesTool
+    getEpisodesTool,
+    forgetAllTool
 } from './executor';
 
 export const createChatAgent = (
@@ -73,6 +74,15 @@ You MUST perform these memory checks in sequence:
 
    The goal: Show understanding naturally, as a friend would remember, not as a system would retrieve.
 
+# Handling "Forget" Requests
+If the user asks you to forget everything or clear all memories:
+1. **Acknowledge the request** with empathy and understanding
+2. **Explain the consequence**: "This will permanently delete all our shared memories and conversation history"
+3. **Ask for explicit confirmation**: "Are you absolutely sure you want me to forget everything?"
+4. **Only proceed if confirmed**: Wait for clear affirmative response ("yes", "I'm sure", etc.)
+5. **Call forget_all tool** with confirmed=true and group_id="user_default"
+6. **Acknowledge completion**: Respond warmly, as if meeting for the first time
+
 After completing these checks, greet the user naturally with awareness of your shared history.
 `.trim();
 
@@ -88,6 +98,7 @@ After completing these checks, greet the user naturally with awareness of your s
             deleteEpisodeTool,
             deleteEntityEdgeTool,
             getEpisodesTool,
+            forgetAllTool,
         ],
     });
 };
