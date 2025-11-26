@@ -1,4 +1,4 @@
-# Plucky - Your Personalized AI Companion
+# Plucky - A personalized, Agentic Voice Assistant
 
 <div align="center">
   <img src="public/plucky.png" alt="Plucky Avatar" width="85%" height="85%" />
